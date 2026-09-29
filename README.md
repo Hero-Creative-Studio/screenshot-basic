@@ -2,21 +2,21 @@
 
 ## Description
 
-screenshot-basic is a basic resource for making screenshots of clients' game render targets using FiveM. It uses the same backing
-WebGL/OpenGL ES calls as used by the `application/x-cfx-game-view` plugin (see the code in [citizenfx/fivem](https://github.com/citizenfx/fivem/blob/b0a7cda1007dc53d2ba0f638c035c0a5d1402796/data/client/bin/d3d_rendering.cc#L248)),
-and wraps these calls using Three.js to 'simplify' WebGL initialization and copying to a buffer from asynchronous NUI.
+screenshot-basic is a basic resource for making screenshots of clients' game render targets using FiveM. The NUI page binds the
+game view texture with plain WebGL (the same `glTexParameterf` activation sequence as the `@citizenfx/three` `CfxTexture`, see
+`glTexParameterfHook` in citizenfx/fivem `nui-core/src/NUIInitialize.cpp`) and reads it back into a canvas.
+
+Plain Lua + one HTML file: no yarn, no webpack, no build step.
+
+The game frame is copied before NUI is drawn, so screenshots contain the game and the native HUD (minimap, DrawText, notifications)
+but not NUI pages (phones, inventories, HTML HUDs).
 
 ## Usage
 
-1. Make sure your [cfx-server-data](https://github.com/citizenfx/cfx-server-data) is updated as of 2019-01-15 or later. You can easily
-   update it by running `git pull` in your local clone directory.
-2. Install `screenshot-basic`:
-   ```
-   mkdir -p 'resources/[local]/'
-   cd 'resources/[local]'
-   git clone https://github.com/citizenfx/screenshot-basic.git screenshot-basic
-   ```
-3. Make/use a resource that uses it. Currently, there are no directly-usable commands, it is only usable through exports.
+1. Drop the folder into your resources and `ensure screenshot-basic`.
+2. Use it through the exports below.
+
+Decoder self-test: `lua tests/base64_test.lua` (any Lua 5.4, from the resource root).
 
 ## API
 
@@ -28,7 +28,7 @@ Takes a screenshot and passes the data URI to a callback. Please don't send this
 Arguments:
 * **options**: An optional object containing options.
   * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
-  * **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
+  * **quality**: number - The quality for a lossy image encoder, in the range 0.0-1.0. Defaults to 0.92.
 * **cb**: A callback upon result.
   * **result**: A `base64` data URI for the image.
 
@@ -48,9 +48,10 @@ Arguments:
 * **field**: The name for the form field to add the file to.
 * **options**: An optional object containing options.
   * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
-  * **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
+  * **quality**: number - The quality for a lossy image encoder, in the range 0.0-1.0. Defaults to 0.92.
+  * **headers**: table? - Extra HTTP headers for the upload request.
 * **cb**: A callback upon result.
-  * **result**: The response data for the remote URL.
+  * **result**: The response data for the remote URL, or an empty string if the upload failed.
 
 Example:
 
@@ -62,9 +63,7 @@ end)
 ```
 
 ### Server
-The server can also request a client to take a screenshot and upload it to a built-in HTTP handler on the server.
-
-Using this API on the server requires at least FiveM client version 1129160, and server pipeline 1011 or higher.
+The server can also request a client to take a screenshot. The image is sent back to the server through a latent net event.
 
 #### requestClientScreenshot(player: string | number, options: any, cb: (err: string | boolean, data: string) => void)
 Requests the specified client to take a screenshot.
@@ -72,13 +71,12 @@ Requests the specified client to take a screenshot.
 Arguments:
 * **player**: The target player's player index.
 * **options**: An object containing options.
-  * **fileName**: string? - The file name on the server to save the image to. If not passed, the callback will get a data URI for the image data.
+  * **fileName**: string? - The file name to save the image to, relative to this resource's folder (subfolders are created). If not passed, the callback will get a data URI for the image data.
   * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
-  * **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
+  * **quality**: number - The quality for a lossy image encoder, in the range 0.0-1.0. Defaults to 0.92.
 * **cb**: A callback upon result.
   * **err**: `false`, or an error string.
-  * **data**: The local file name the upload was saved to, or the data URI for the image.
-
+  * **data**: The full path of the saved file, or the data URI for the image.
 
 Example:
 ```lua
