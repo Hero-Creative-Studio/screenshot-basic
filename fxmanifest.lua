@@ -1,18 +1,16 @@
-fx_version 'bodacious'
+fx_version 'cerulean'
 game 'common'
+lua54 'yes'
+author 'CitizenFX Developers'
 
-client_script 'dist/client.js'
-server_script 'dist/server.js'
-
-dependency 'yarn'
-dependency 'webpack'
-
-webpack_config 'client.config.js'
-webpack_config 'server.config.js'
-webpack_config 'ui.config.js'
-
-files {
-    'dist/ui.html'
+client_script 'client.lua'
+server_scripts {
+    'base64.lua',
+    'server.lua'
 }
 
-ui_page 'dist/ui.html'
+ui_page 'html/index.html'
+
+files {
+    'html/index.html'
+}
