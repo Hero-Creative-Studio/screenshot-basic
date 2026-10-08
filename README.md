@@ -1,3 +1,15 @@
+<p align="center">
+  <img src="https://herocreative.de/images/hero-creative-studio-logo.webp?v=2" alt="Hero Creative Studio" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/downloads/Hero-Creative-Studio/screenshot-basic/total?logo=github" alt="Downloads" />
+</p>
+
+As a sign of our commitment to supporting FiveM server owners, we fork and improve well-known but poorly maintained repositories and release them for free. Enjoy the scripts, and feel free to contribute yourself. If you find any bugs or have ideas for improvements, please let us know!
+
+---
+
 # screenshot-basic for FiveM
 
 ## Description
@@ -22,11 +34,12 @@ Decoder self-test: `lua tests/base64_test.lua` (any Lua 5.4, from the resource r
 
 ### Client
 
-#### requestScreenshot(options?: any, cb: (result: string) => void)
+#### requestScreenshot(options?: table, cb: fun(result: string))
 Takes a screenshot and passes the data URI to a callback. Please don't send this through _any_ server events.
+If the NUI page does not answer within 30 seconds, the callback receives an empty string.
 
 Arguments:
-* **options**: An optional object containing options.
+* **options**: An optional table containing options.
   * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
   * **quality**: number - The quality for a lossy image encoder, in the range 0.0-1.0. Defaults to 0.92.
 * **cb**: A callback upon result.
@@ -40,13 +53,14 @@ exports['screenshot-basic']:requestScreenshot(function(data)
 end)
 ```
 
-#### requestScreenshotUpload(url: string, field: string, options?: any, cb: (result: string) => void)
+#### requestScreenshotUpload(url: string, field: string, options?: table, cb: fun(result: string))
 Takes a screenshot and uploads it as a file (`multipart/form-data`) to a remote HTTP URL.
+`url` and `field` are required. The callback also receives an empty string after the 30 second timeout.
 
 Arguments:
 * **url**: The URL to a file upload handler.
 * **field**: The name for the form field to add the file to.
-* **options**: An optional object containing options.
+* **options**: An optional table containing options.
   * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
   * **quality**: number - The quality for a lossy image encoder, in the range 0.0-1.0. Defaults to 0.92.
   * **headers**: table? - Extra HTTP headers for the upload request.
@@ -65,18 +79,18 @@ end)
 ### Server
 The server can also request a client to take a screenshot. The image is sent back to the server through a latent net event.
 
-#### requestClientScreenshot(player: string | number, options: any, cb: (err: string | boolean, data: string) => void)
-Requests the specified client to take a screenshot.
+#### requestClientScreenshot(player: string | number, options: table, cb: fun(err: string | boolean, data: string))
+Requests the specified client to take a screenshot. Requests time out after 45 seconds, and images larger than 10 MB are rejected.
 
 Arguments:
 * **player**: The target player's player index.
-* **options**: An object containing options.
-  * **fileName**: string? - The file name to save the image to, relative to this resource's folder (subfolders are created). If not passed, the callback will get a data URI for the image data.
+* **options**: A table containing options.
+  * **fileName**: string? - The file name to save the image to, relative to this resource's folder (subfolders are created). Absolute paths, drive letters and `..` segments are rejected. If not passed, the callback will get a data URI for the image data.
   * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
   * **quality**: number - The quality for a lossy image encoder, in the range 0.0-1.0. Defaults to 0.92.
 * **cb**: A callback upon result.
-  * **err**: `false`, or an error string.
-  * **data**: The full path of the saved file, or the data URI for the image.
+  * **err**: `false`, or an error string (`Upload timeout`, `File too large`, `Invalid file type`, `Invalid image data`, `Invalid target path`, `Failed to write file`, `Screenshot failed`).
+  * **data**: The full path of the saved file, or the data URI for the image. Empty string on error.
 
 Example:
 ```lua
