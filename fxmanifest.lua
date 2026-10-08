@@ -2,7 +2,7 @@ fx_version 'cerulean'
 game 'common'
 lua54 'yes'
 author 'CitizenFX Developers'
-version '1.0.0'
+version '1.0.1'
 
 client_script 'client.lua'
 server_scripts {
