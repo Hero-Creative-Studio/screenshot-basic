@@ -13,7 +13,7 @@ local function capture(request, cb)
     local id = nextId
     pending[id] = cb
 
-    SetTimeout(timeoutMs, function()
+    SetTimeout(timeoutMs + (request.duration or 0) * 1000, function()
         local timedOut = pending[id]
         if timedOut then
             pending[id] = nil
@@ -24,6 +24,15 @@ local function capture(request, cb)
 
     request.id = id
     SendNUIMessage({ request = request })
+end
+
+local function videoRequest(options)
+    return {
+        video = true,
+        duration = math.min(math.max(tonumber(options.duration) or 5, 1), 15),
+        fps = options.fps,
+        bitrate = options.bitrate
+    }
 end
 
 RegisterNUICallback('screenshot_created', function(body, cb)
@@ -83,10 +92,47 @@ exports('requestScreenshotUpload', function(url, field, options, cb)
     }, cb)
 end)
 
+exports('requestVideo', function(options, cb)
+    if isCallable(options) then
+        options, cb = nil, options
+    end
+
+    if not isCallable(cb) then
+        print('^1requestVideo: callback is required^7')
+        return
+    end
+
+    capture(videoRequest(type(options) == 'table' and options or {}), cb)
+end)
+
+exports('requestVideoUpload', function(url, field, options, cb)
+    if isCallable(options) then
+        options, cb = nil, options
+    end
+
+    if not isCallable(cb) then
+        print('^1requestVideoUpload: callback is required^7')
+        return
+    end
+
+    if type(url) ~= 'string' or url == '' or type(field) ~= 'string' or field == '' then
+        print('^1requestVideoUpload: url and field are required^7')
+        return
+    end
+
+    options = type(options) == 'table' and options or {}
+
+    local request = videoRequest(options)
+    request.headers = options.headers
+    request.targetURL = url
+    request.targetField = field
+    capture(request, cb)
+end)
+
 RegisterNetEvent('screenshot_basic:request', function(requestId, options)
     options = type(options) == 'table' and options or {}
 
-    capture({
+    capture(options.video and videoRequest(options) or {
         encoding = options.encoding,
         quality = options.quality
     }, function(data)
