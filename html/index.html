@@ -27,9 +27,10 @@ function compile(type, src) {
 const program = gl.createProgram();
 gl.attachShader(program, compile(gl.VERTEX_SHADER, `
     attribute vec2 pos;
+    uniform float flipY;
     varying vec2 uv;
     void main() {
-        uv = vec2((pos.x + 1.0) * 0.5, 1.0 - (pos.y + 1.0) * 0.5);
+        uv = vec2((pos.x + 1.0) * 0.5, 0.5 - pos.y * 0.5 * flipY);
         gl_Position = vec4(pos, 0.0, 1.0);
     }`));
 gl.attachShader(program, compile(gl.FRAGMENT_SHADER, `
@@ -61,6 +62,7 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array(3));
 gl.uniform1i(gl.getUniformLocation(program, 'tex'), 0);
+const flipLoc = gl.getUniformLocation(program, 'flipY');
 
 function bindGameTexture() {
     gl.bindTexture(gl.TEXTURE_2D, null);
@@ -68,6 +70,14 @@ function bindGameTexture() {
     gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
     gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+}
+
+function drawGameFrame(framebuffer, flip, w, h) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    bindGameTexture();
+    gl.uniform1f(flipLoc, flip);
+    gl.viewport(0, 0, w, h);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
 const targetTex = gl.createTexture();
@@ -88,10 +98,7 @@ function readGameFrame(w, h) {
         targetH = h;
     }
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    bindGameTexture();
-    gl.viewport(0, 0, w, h);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    drawGameFrame(fbo, 1, w, h);
 
     const pixels = new Uint8ClampedArray(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -102,23 +109,70 @@ function isPlainObject(v) {
     return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+function screenshot(req) {
+    const encoding = mimeTypes.has(req.encoding) ? req.encoding : 'jpg';
+    const quality = typeof req.quality === 'number' ? req.quality : 0.92;
+    const w = window.innerWidth, h = window.innerHeight;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').putImageData(new ImageData(readGameFrame(w, h), w, h), 0, 0);
+
+    return new Promise(resolve => canvas.toBlob(blob => resolve([blob, `screenshot.${encoding}`]), mimeTypes.get(encoding), quality));
+}
+
+function record(req) {
+    const fps = typeof req.fps === 'number' ? req.fps : 30;
+    const bitrate = typeof req.bitrate === 'number' ? req.bitrate : 2500000;
+    const w = window.innerWidth, h = window.innerHeight;
+
+    glCanvas.width = w;
+    glCanvas.height = h;
+    const stream = glCanvas.captureStream(fps);
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: bitrate });
+    const chunks = [];
+    let recording = true;
+
+    const draw = () => {
+        if (recording) {
+            drawGameFrame(null, -1, w, h);
+            requestAnimationFrame(draw);
+        }
+    };
+
+    return new Promise((resolve, reject) => {
+        recorder.ondataavailable = e => chunks.push(e.data);
+        recorder.onstop = () => {
+            recording = false;
+            stream.getTracks().forEach(track => track.stop());
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            blob.size ? resolve([blob, 'video.webm']) : reject(new Error('recording failed'));
+        };
+        draw();
+        recorder.start();
+        setTimeout(() => recorder.stop(), req.duration * 1000);
+    });
+}
+
+function readDataURL(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+    });
+}
+
 async function handle(req) {
     let result = '';
 
     try {
-        const encoding = mimeTypes.has(req.encoding) ? req.encoding : 'jpg';
-        const quality = typeof req.quality === 'number' ? req.quality : 0.92;
-        const w = window.innerWidth, h = window.innerHeight;
-
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').putImageData(new ImageData(readGameFrame(w, h), w, h), 0, 0);
+        const [blob, fileName] = await (req.video ? record(req) : screenshot(req));
 
         if (req.targetURL) {
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, mimeTypes.get(encoding), quality));
             const form = new FormData();
-            form.append(req.targetField, blob, `screenshot.${encoding}`);
+            form.append(req.targetField, blob, fileName);
 
             const response = await fetch(req.targetURL, {
                 method: 'POST',
@@ -132,7 +186,7 @@ async function handle(req) {
 
             result = await response.text();
         } else {
-            result = canvas.toDataURL(mimeTypes.get(encoding), quality);
+            result = await readDataURL(blob);
         }
     } catch (err) {
         console.error('screenshot-basic:', err);
