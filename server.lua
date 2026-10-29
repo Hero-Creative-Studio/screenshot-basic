@@ -1,13 +1,13 @@
 local resourceName = GetCurrentResourceName()
 local timeoutMs = 45000
 local maxFileSize = 10 * 1024 * 1024
-local extensions = { ['image/jpeg'] = 'jpg', ['image/png'] = 'png', ['image/webp'] = 'webp' }
+local extensions = { ['image/jpeg'] = 'jpg', ['image/png'] = 'png', ['image/webp'] = 'webp', ['video/webm'] = 'webm' }
 
 local pending = {}
 local nextId = 0
 
 local function parseDataUri(data)
-    local mime, pos = data:match('^data:(image/%a+);base64,()')
+    local mime, pos = data:match('^data:(%a+/%a+);base64,()')
     if extensions[mime] then
         return mime, pos
     end
@@ -72,14 +72,12 @@ local function finish(request, data)
     request.cb(false, path)
 end
 
-local function requestClientScreenshot(player, options, cb)
-    options = type(options) == 'table' and options or {}
-
+local function requestClient(player, fileName, cb, payload)
     nextId = nextId + 1
     local id = nextId
-    pending[id] = { player = tonumber(player), fileName = options.fileName, cb = cb }
+    pending[id] = { player = tonumber(player), fileName = fileName, cb = cb }
 
-    SetTimeout(timeoutMs, function()
+    SetTimeout(timeoutMs + (payload.duration or 0) * 1000, function()
         local request = pending[id]
         if request then
             pending[id] = nil
@@ -87,13 +85,28 @@ local function requestClientScreenshot(player, options, cb)
         end
     end)
 
-    TriggerClientEvent('screenshot_basic:request', player, id, {
+    TriggerClientEvent('screenshot_basic:request', player, id, payload)
+end
+
+exports('requestClientScreenshot', function(player, options, cb)
+    options = type(options) == 'table' and options or {}
+
+    requestClient(player, options.fileName, cb, {
         encoding = options.encoding,
         quality = options.quality
     })
-end
+end)
 
-exports('requestClientScreenshot', requestClientScreenshot)
+exports('requestClientVideo', function(player, options, cb)
+    options = type(options) == 'table' and options or {}
+
+    requestClient(player, options.fileName, cb, {
+        video = true,
+        duration = math.min(math.max(tonumber(options.duration) or 5, 1), 15),
+        fps = options.fps,
+        bitrate = options.bitrate
+    })
+end)
 
 RegisterNetEvent('screenshot_basic:result', function(requestId, data)
     local src = tonumber(source)
