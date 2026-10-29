@@ -76,6 +76,20 @@ exports['screenshot-basic']:requestScreenshotUpload('https://wew.wtf/upload.php'
 end)
 ```
 
+#### requestVideo(options?: table, cb: fun(result: string))
+Records a WebM video (VP8, max 720p, no audio) and passes the data URI to a callback.
+
+Arguments:
+* **options**: An optional table containing options.
+  * **duration**: number - Length in seconds, 1-15. Defaults to 5.
+  * **fps**: number - Defaults to 30.
+  * **bitrate**: number - Bits per second. Defaults to 2500000.
+* **cb**: A callback upon result.
+  * **result**: A `base64` data URI for the video.
+
+#### requestVideoUpload(url: string, field: string, options?: table, cb: fun(result: string))
+Records a video and uploads it like `requestScreenshotUpload`. Options are the same as `requestVideo`, plus **headers**.
+
 ### Server
 The server can also request a client to take a screenshot. The image is sent back to the server through a latent net event.
 
@@ -96,6 +110,20 @@ Example:
 ```lua
 exports['screenshot-basic']:requestClientScreenshot(GetPlayers()[1], {
     fileName = 'cache/screenshot.jpg'
+}, function(err, data)
+    print('err', err)
+    print('data', data)
+end)
+```
+
+#### requestClientVideo(player: string | number, options: table, cb: fun(err: string | boolean, data: string))
+Same as `requestClientScreenshot`, but records a video. Options are **fileName** plus the `requestVideo` options.
+
+Example:
+```lua
+exports['screenshot-basic']:requestClientVideo(GetPlayers()[1], {
+    fileName = 'cache/clip.webm',
+    duration = 5
 }, function(err, data)
     print('err', err)
     print('data', data)
