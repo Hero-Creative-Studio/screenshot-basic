@@ -125,32 +125,44 @@ function screenshot(req) {
 function record(req) {
     const fps = typeof req.fps === 'number' ? req.fps : 30;
     const bitrate = typeof req.bitrate === 'number' ? req.bitrate : 2500000;
-    const w = window.innerWidth, h = window.innerHeight;
+    const scale = Math.min(1, 720 / window.innerHeight);
+    const w = Math.round(window.innerWidth * scale), h = Math.round(window.innerHeight * scale);
 
     glCanvas.width = w;
     glCanvas.height = h;
-    const stream = glCanvas.captureStream(fps);
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: bitrate });
+    const track = new MediaStreamTrackGenerator({ kind: 'video' });
+    const writer = track.writable.getWriter();
+    const recorder = new MediaRecorder(new MediaStream([track]), { mimeType: 'video/webm', videoBitsPerSecond: bitrate });
     const chunks = [];
+    const start = performance.now();
     let recording = true;
+    let next = start;
 
     const draw = () => {
-        if (recording) {
-            drawGameFrame(null, -1, w, h);
-            requestAnimationFrame(draw);
+        if (!recording) {
+            return;
         }
+
+        const now = performance.now();
+        if (now >= next) {
+            next = Math.max(next + 1000 / fps, now);
+            drawGameFrame(null, -1, w, h);
+            writer.write(new VideoFrame(glCanvas, { timestamp: Math.round((now - start) * 1000) }));
+        }
+
+        requestAnimationFrame(draw);
     };
 
     return new Promise((resolve, reject) => {
         recorder.ondataavailable = e => chunks.push(e.data);
         recorder.onstop = () => {
             recording = false;
-            stream.getTracks().forEach(track => track.stop());
+            writer.close();
             const blob = new Blob(chunks, { type: 'video/webm' });
             blob.size ? resolve([blob, 'video.webm']) : reject(new Error('recording failed'));
         };
-        draw();
         recorder.start();
+        draw();
         setTimeout(() => recorder.stop(), req.duration * 1000);
     });
 }
